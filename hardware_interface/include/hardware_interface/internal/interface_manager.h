@@ -43,16 +43,27 @@
 
 namespace hardware_interface
 {
-
-namespace internal
-{
-
 // SFINAE workaround, so that we have reflection inside the template functions
 template <typename T>
 struct CheckIsResourceManager {
+  // variable definitions for compiler-time logic
+  typedef char yes[1];
+  typedef char no[2];
+
   // method called if C is a ResourceManager
   template <typename C>
-  static void callCM(typename std::vector<C*>& managers, C* result, typename C::resource_manager_type*)
+  static yes& testRM(typename C::resource_manager_type*);
+
+  // method called if C is not a ResourceManager
+  template <typename>
+  static no& testRM(...);
+
+  // CheckIsResourceManager<T>::value == true when T is a ResourceManager
+  static const bool value = (sizeof(testRM<T>(0)) == sizeof(yes));
+
+  // method called if C is a ResourceManager
+  template <typename C>
+  static yes& callCM(typename std::vector<C*>& managers, C* result, typename C::resource_manager_type*)
   {
     std::vector<typename C::resource_manager_type*> managers_in;
     // we have to typecase back to base class
@@ -63,7 +74,7 @@ struct CheckIsResourceManager {
 
   // method called if C is not a ResourceManager
   template <typename C>
-  static void callCM(typename std::vector<C*>& managers, C* result, ...) {}
+  static no& callCM(typename std::vector<C*>& managers, C* result, ...) {}
 
   // calls ResourceManager::concatManagers if C is a ResourceManager
   static const void callConcatManagers(typename std::vector<T*>& managers, T* result)
@@ -72,46 +83,19 @@ struct CheckIsResourceManager {
 
   // method called if C is a ResourceManager
   template <typename C>
-  static void callGR(std::vector<std::string> &resources, C* iface, typename C::resource_manager_type*)
+  static std::vector<std::string> callGR(C* iface, typename C::resource_manager_type*)
   {
-    resources = iface->getNames();
+    return iface->getNames();
   }
 
   // method called if C is not a ResourceManager
   template <typename C>
-  static void callGR(std::vector<std::string> &resources, T* iface, ...) { }
+  static std::vector<std::string> callGR(T* iface, ...) {}
 
   // calls ResourceManager::concatManagers if C is a ResourceManager
-  static void callGetResources(std::vector<std::string> &resources, T* iface)
-  { return callGR<T>(resources, iface, 0); }
-
-  template <typename C>
-  static T* newCI(boost::ptr_vector<ResourceManagerBase> &guards, typename C::resource_manager_type*)
-  {
-    T* iface_combo = new T;
-    // save the new interface pointer to allow for its correct destruction
-    guards.push_back(static_cast<ResourceManagerBase*>(iface_combo));
-    return iface_combo;
-  }
-
-  // method called if C is not a ResourceManager
-  template <typename C>
-  static T* newCI(boost::ptr_vector<ResourceManagerBase> &guards, ...) {
-    // it is not a ResourceManager
-    ROS_ERROR("You cannot register multiple interfaces of the same type which are "
-              "not of type ResourceManager. There is no established protocol "
-              "for combining them.");
-    return NULL;
-  }
-
-  static T* newCombinedInterface(boost::ptr_vector<ResourceManagerBase> &guards)
-  {
-    return newCI<T>(guards, 0);
-  }
-
+  static std::vector<std::string> callGetResources(T* iface)
+  { return callGR<T>(iface, 0); }
 };
-
-} // namespace internal
 
 class InterfaceManager
 {
@@ -134,7 +118,14 @@ public:
       ROS_WARN_STREAM("Replacing previously registered interface '" << iface_name << "'.");
     }
     interfaces_[iface_name] = iface;
-    internal::CheckIsResourceManager<T>::callGetResources(resources_[iface_name], iface);
+
+    std::vector<std::string> resources;
+    if(CheckIsResourceManager<T>::value)
+    {
+      // it is a ResourceManager. Get the names of the resources
+      resources = CheckIsResourceManager<T>::callGetResources(iface);
+    }
+    resources_[iface_name] = resources;
   }
 
   void registerInterfaceManager(InterfaceManager* iface_man)
@@ -196,10 +187,15 @@ public:
       iface_combo = static_cast<T*>(it_combo->second);
     } else {
       // no existing combined interface
-      iface_combo = internal::CheckIsResourceManager<T>::newCombinedInterface(interface_destruction_list_);
-      if(iface_combo) {
+      if(CheckIsResourceManager<T>::value) {
+        // it is a ResourceManager
+
+        // create a new combined interface
+        iface_combo = new T;
+        // save the new interface pointer to allow for its correct destruction
+        interface_destruction_list_.push_back(reinterpret_cast<ResourceManagerBase*>(iface_combo));
         // concat all of the resource managers together
-        internal::CheckIsResourceManager<T>::callConcatManagers(iface_list, iface_combo);
+        CheckIsResourceManager<T>::callConcatManagers(iface_list, iface_combo);
         // save the combined interface for if this is called again
         interfaces_combo_[type_name] = iface_combo;
         num_ifaces_registered_[type_name] = iface_list.size();

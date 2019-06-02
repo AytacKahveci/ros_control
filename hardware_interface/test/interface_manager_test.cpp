@@ -34,7 +34,6 @@ using namespace hardware_interface;
 
 struct FooInterface
 {
-  FooInterface(int foo): foo(foo) {}
   int foo;
 };
 
@@ -51,7 +50,7 @@ struct BazInterface
 TEST(InterfaceManagerTest, InterfaceRegistration)
 {
   // Register interfaces
-  FooInterface foo_iface(0);
+  FooInterface foo_iface;
   BarInterface bar_iface;
 
   InterfaceManager iface_mgr;
@@ -67,8 +66,11 @@ TEST(InterfaceManagerTest, InterfaceRegistration)
 TEST(InterfaceManagerTest, InterfaceRewriting)
 {
   // Two instances of the same interface
-  FooInterface foo_iface_1(1);
-  FooInterface foo_iface_2(2);
+  FooInterface foo_iface_1;
+  foo_iface_1.foo = 1;
+
+  FooInterface foo_iface_2;
+  foo_iface_2.foo = 2;
 
   // Register first interface and validate it
   InterfaceManager iface_mgr;
@@ -89,3 +91,4 @@ int main(int argc, char** argv)
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+

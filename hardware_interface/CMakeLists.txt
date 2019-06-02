@@ -9,7 +9,7 @@ include_directories(include)
 catkin_package(
   CATKIN_DEPENDS roscpp
   INCLUDE_DIRS include
-  )
+)
 
 if(CATKIN_ENABLE_TESTING)
 
@@ -48,9 +48,12 @@ if(CATKIN_ENABLE_TESTING)
     
     catkin_add_gtest(posvelacc_command_interface_test test/posvelacc_command_interface_test.cpp)
     target_link_libraries(posvelacc_command_interface_test ${catkin_LIBRARIES})
-    
+
 endif()
 
 # Install
 install(DIRECTORY include/${PROJECT_NAME}/
-  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
+ DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+ FILES_MATCHING PATTERN "*.h"
+ PATTERN ".svn" EXCLUDE
+)
